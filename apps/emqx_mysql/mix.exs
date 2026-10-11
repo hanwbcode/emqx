@@ -23,7 +23,7 @@ defmodule EMQXMysql.MixProject do
 
   def deps() do
     [
-      {:mysql, github: "emqx/mysql-otp", tag: "1.8.0.1"},
+      {:mysql, github: "hanwbcode/mysql-otp", tag: "1.8.0.1-doris"},
       {:emqx_connector, in_umbrella: true, runtime: false},
       {:emqx_resource, in_umbrella: true}
     ]
