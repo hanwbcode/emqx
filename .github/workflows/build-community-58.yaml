@@ -1,6 +1,9 @@
 name: Build and Publish Community 5.8 Image
 
 on:
+  push:
+    branches:
+      - release-58
   workflow_dispatch:
     inputs:
       sync_upstream:
@@ -19,6 +22,10 @@ permissions:
 jobs:
   sync-and-build:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, 'pushdocker'))
 
     steps:
       - name: Checkout repository
@@ -45,14 +52,15 @@ jobs:
           
           SHOULD_SYNC="${{ github.event.inputs.sync_upstream }}"
           IS_SCHEDULE="${{ github.event_name == 'schedule' }}"
+          IS_PUSH="${{ github.event_name == 'push' }}"
           
           if [ "$LOCAL_HASH" != "$UPSTREAM_HASH" ] && { [ "$IS_SCHEDULE" = "true" ] || [ "$SHOULD_SYNC" = "true" ]; }; then
             echo "发现上游 release-58 有更新，正在同步..."
             git merge --no-edit upstream/release-58
             git push origin release-58
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "手动触发构建，继续执行..."
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$IS_PUSH" = "true" ]; then
+            echo "触发构建，继续执行..."
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           else
             echo "代码已是最新，定时检查跳过构建。"
