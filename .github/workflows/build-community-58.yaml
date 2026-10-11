@@ -56,7 +56,12 @@ jobs:
           
           if [ "$LOCAL_HASH" != "$UPSTREAM_HASH" ] && { [ "$IS_SCHEDULE" = "true" ] || [ "$SHOULD_SYNC" = "true" ]; }; then
             echo "发现上游 release-58 有更新，正在同步..."
-            git merge --no-edit upstream/release-58
+            git merge --no-edit upstream/release-58 || true
+            find .github/workflows/ -type f -name "*.yaml" ! -name "build-community-58.yaml" -exec rm -f {} +
+            if [ -n "$(git status --porcelain .github/workflows/)" ]; then
+              git add .github/workflows/
+              git commit -m "chore: prune upstream workflows after sync" || true
+            fi
             git push origin release-58
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$IS_PUSH" = "true" ]; then
