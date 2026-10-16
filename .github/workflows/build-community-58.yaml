@@ -11,9 +11,9 @@ on:
         required: true
         type: boolean
         default: true
-  schedule:
-    # 每天 UTC 02:00（北京时间 10:00）自动检查上游是否有更新并构建
-    - cron: '0 2 * * *'
+#   schedule:
+#     # 每天 UTC 02:00（北京时间 10:00）自动检查上游是否有更新并构建
+#     - cron: '0 2 * * *'
 
 permissions:
   contents: write
@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
       (github.event_name == 'push' && contains(github.event.head_commit.message, 'pushdocker'))
 
     steps:
