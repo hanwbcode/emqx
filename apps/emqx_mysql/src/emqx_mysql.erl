@@ -173,6 +173,14 @@ on_query(
     {TypeOrKey, SQLOrKey, Params, Timeout},
     State
 ) ->
+    on_query(InstId, {TypeOrKey, SQLOrKey, Params, Timeout}, State, 1).
+
+on_query(
+    InstId,
+    {TypeOrKey, SQLOrKey, Params, Timeout},
+    State,
+    RetriesLeft
+) ->
     MySqlFunction = mysql_function(TypeOrKey),
     {SQLOrKey2, Data} = proc_sql_params(TypeOrKey, SQLOrKey, Params, State),
     case on_sql_query(InstId, MySqlFunction, SQLOrKey2, Data, Timeout, State) of
@@ -184,7 +192,7 @@ on_query(
                         #{type_or_key => TypeOrKey, sql_or_key => SQLOrKey, params => Params}
                     ),
                     %% not return result, next loop will try again
-                    on_query(InstId, {TypeOrKey, SQLOrKey, Params, Timeout}, State);
+                    on_query(InstId, {TypeOrKey, SQLOrKey, Params, Timeout}, State, RetriesLeft);
                 {error, Reason} ->
                     ?tp(
                         error,
@@ -198,6 +206,14 @@ on_query(
                     ),
                     {error, Reason}
             end;
+        {error, {recoverable_error, _Reason}} = Error when RetriesLeft > 0 ->
+            ?tp(
+                mysql_connector_query_retry,
+                #{type_or_key => TypeOrKey, sql_or_key => SQLOrKey, retries_left => RetriesLeft}
+            ),
+            %% The bad connection was already killed by do_sql_query.
+            %% Retry once immediately with a fresh connection from the pool.
+            on_query(InstId, {TypeOrKey, SQLOrKey, Params, Timeout}, State, RetriesLeft - 1);
         Result ->
             Result
     end.
@@ -590,6 +606,26 @@ do_sql_query(SQLFunc, Conn, SQLOrKey, Params, Timeout, LogMeta) ->
                 LogMeta#{msg => "mysql_connector_do_sql_query_failed", reason => Reason}
             ),
             {error, {recoverable_error, Reason}};
+        {error, {1105, _, Reason} = Error} ->
+            case is_stale_or_retryable_error(Reason) of
+                true ->
+                    ?SLOG(
+                        warning,
+                        LogMeta#{
+                            msg => "mysql_connector_stale_session_detected_reconnecting",
+                            reason => Reason
+                        }
+                    ),
+                    %% Kill the pool worker connection to trigger reconnection and re-prepare
+                    _ = exit(Conn, restart),
+                    {error, {recoverable_error, Error}};
+                false ->
+                    ?SLOG(
+                        error,
+                        LogMeta#{msg => "mysql_connector_do_sql_query_failed", reason => Reason}
+                    ),
+                    {error, {unrecoverable_error, Reason}}
+            end;
         {error, Reason} ->
             ?SLOG(
                 error,
@@ -610,3 +646,15 @@ do_sql_query(SQLFunc, Conn, SQLOrKey, Params, Timeout, LogMeta) ->
             ),
             {error, {unrecoverable_error, {invalid_params, Params}}}
     end.
+
+is_stale_or_retryable_error(Reason) when is_binary(Reason) ->
+    Keywords = [
+        <<"failed to get tablet">>,
+        <<"tablet does not exist">>,
+        <<"tablet is not normal">>,
+        <<"BackendService.get_tablet_info">>
+    ],
+    binary:match(Reason, Keywords) =/= nomatch;
+is_stale_or_retryable_error(_) ->
+    false.
+
