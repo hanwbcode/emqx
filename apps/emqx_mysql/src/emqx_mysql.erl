@@ -206,7 +206,7 @@ on_query(
                     ),
                     {error, Reason}
             end;
-        {error, {recoverable_error, _Reason}} = Error when RetriesLeft > 0 ->
+        {error, {recoverable_error, _Reason}} when RetriesLeft > 0 ->
             ?tp(
                 mysql_connector_query_retry,
                 #{type_or_key => TypeOrKey, sql_or_key => SQLOrKey, retries_left => RetriesLeft}
